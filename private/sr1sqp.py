@@ -12,8 +12,11 @@
 # from numpy import conjugate as conj
 # from numpy.random import default_rng
 
-from private import pygransoConstants as pC
+from private.pygransoConstants import pC
+from private.neighborhoodCache import nC
 import time
+import numpy as np
+
 
 
 class AlgSR1SQP():
@@ -25,7 +28,7 @@ class AlgSR1SQP():
         Minimizes a penalty function.  Note that sr1sqp operates on the
         objects it takes as input arguments and sr1sqp will modify their
         states.  The result of sr1sqp's optimization process is obtained
-        by querying these objects after bfgssqp has been run.
+        by querying these objects after sr1sqp has been run.
         """
         self.f_eval_fn = f_eval_fn
         self.penaltyfn_obj = penaltyfn_obj
@@ -39,8 +42,6 @@ class AlgSR1SQP():
         #  initialization parameters
         x                           = opts.x0
         n                           = len(x)
-        # full_memory                 = opts.limited_mem_size == 0
-        # self.damping                     = opts.bfgs_damping
         
         #  convergence criteria termination parameters
         #  violation tolerances are checked and handled by penaltyfn_obj
@@ -134,10 +135,8 @@ class AlgSR1SQP():
             APPLY_IDENTITY      = lambda x: x
         
         if np.any(halt_log_fn!=None):
-            get_bfgs_state_fn = lambda : self.bfgs_obj.getState()
-            user_halt = halt_log_fn(0, x, self.penaltyfn_at_x, np.zeros((n,1)),
-                                    get_bfgs_state_fn, H_QP,
-                                    1, 0, 1, stat_vec, self.stat_val, 0          )
+            get_sr1_state_fn = lambda : self.sr1_obj.getState()
+            user_halt = halt_log_fn(0, x, self.penaltyfn_at_x, np.zeros((n,1)), get_sr1_state_fn, H_QP, 1, 0, 1, stat_vec, self.stat_val, 0 )
         
 
         if self.print_level:
