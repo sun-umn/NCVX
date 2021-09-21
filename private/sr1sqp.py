@@ -112,7 +112,7 @@ class AlgSR1SQP():
         #  For applying the normal non-regularized version of H
         [self.apply_H_fn,*_]            = self.getApplyH()  
         
-        self.sr1_update_fn          = lambda s,y,sty,damped: self.sr1_obj.update(s,y,sty,damped)
+        self.sr1_update_fn          = lambda s,y: self.sr1_obj.update(s,y)
 
         #  function which caches up to ngrad previous gradients and will return 
         #  those which are sufficently close to the current iterate x. 

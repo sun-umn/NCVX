@@ -3,7 +3,7 @@
 # from pygransoStruct import general_struct
 # from numpy import conjugate as conj
 # from dbg_print import dbg_print_1
-# import torch
+import torch
 
 class H_obj_struct:
     
@@ -19,58 +19,29 @@ class H_obj_struct:
         self.scaleH0 = scaleH0
 
     # @profile
-    def update(self,s,y,sty,damped=False):
+    def update(self,s,y):
         self.requests += 1
         skipped  = 0
         
-        if damped == True:
-            self.damped_requests += 1
+        Hy = self.H @ y
 
-        #   sty > 0 should hold in theory but it can fail due to rounding
-        #  errors, even if BFGS damping is applied. 
-        if sty <= 0:
+        # Reference: Nocedal, Jorge, and Stephen Wright. Numerical optimization. Springer Science & Business Media, 2006. 
+        #             P145 SR1 method
+
+        # there is no symmetric rank-one updating formula satisfying the secant equation
+        if s != Hy and (s-Hy).t()@y == 0:
             skipped = 2
             self.sty_fails += 1
+            print("change name for sty_fails")
             return skipped
         
-        # sty > 0 so attempt BFGS update
-        if self.scaleH0:
-            # for full BFGS, Nocedal and Wright recommend scaling I
-            # before the first update only
-            
-            # gamma = sty/np.dot(np.transpose(y),y) 
-            gamma = sty/(torch.conj(y.t()) @ y) 
-            gamma = gamma.item()
+        # simple update: unchanged H
+        elif s == Hy:
+            return skipped
 
-            if np.isinf(gamma) or np.isnan(gamma):
-                skipped     = 1
-                self.scale_fails += 1
-            else:
-                self.H *= gamma
-            
-            self.scaleH0         = False # only allow first update to be scaled
-        
-
-        # for formula, see Nocedal and Wright's book
-        # M = I - rho*s*y', H = M*H*M' + rho*s*s', so we have
-        # H = H - rho*s*y'*H - rho*H*y*s' + rho^2*s*y'*H*y*s' + rho*s*s'
-        #  note that the last two terms combine: (rho^2*y'Hy + rho)ss'
-        rho = (1./sty)[0][0]
-        Hy = self.H @ y
-        rhoHyst = (rho*Hy) @ torch.conj(s.t())
-
-        #   old version: update may not be symmetric because of rounding
-        #  H = H - rhoHyst' - rhoHyst + rho*s*(y'*rhoHyst) + rho*s*s';
-        #  new in HANSO version 2.02: make H explicitly symmetric
-        #  also saves one outer product
-        #  in practice, makes little difference, except H=H' exactly
-        
-        #  ytHy could be < 0 if H not numerically pos def
-        
-        ytHy = torch.conj(y.t()) @ Hy
-        sstfactor = max([(rho*rho*ytHy + rho).item(),  0])
-        sscaled = np.sqrt(sstfactor)*s
-        H_new = self.H - (torch.conj(rhoHyst.t()) + rhoHyst) + sscaled @ torch.conj(sscaled.t())
+        # else:
+        s_Hy = s - self.H@y 
+        H_new = self.H + s_Hy @ s_Hy.t()/( s_Hy.t()@y )
 
         #  only update H if H_new doesn't contain any infs or nans
         H_vec = torch.reshape(H_new, (torch.numel(H_new),1))
@@ -79,18 +50,10 @@ class H_obj_struct:
         if notInf_flag and notNan_flag:
             self.H = H_new
             self.updates += 1
-            if damped: 
-                self.damped_updates += 1
         else:
             skipped = 3
             self.infnan_fails += 1
         
-        #  An aside, for an alternative way of doing the BFGS update:
-        #  Add the update terms together first: does not seem to make
-        #  significant difference
-        #    update = sscaled*sscaled' - (rhoHyst' + rhoHyst);
-        #    H = H + update;
-
         return skipped
 
     def applyH(self,q):
