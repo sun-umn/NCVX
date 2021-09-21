@@ -262,26 +262,6 @@ class AlgBFGSSQP():
                 
             [p,is_descent,fallback_on_this_direction] = self.checkDirection(p,g)
 
-            # dbg_print_1("begin 1D plot for obj function: ")
-            # if self.iter == 2:
-            #     plot_x = []
-            #     plot_y = []
-            #     for i in range(100):
-            #         factor = (-1 + i * 1/50)
-            #         x_tmp = factor * p
-            #         [plot_f,plot_grad,is_feasible] = self.penaltyfn_obj.evaluatePenaltyFunction(x_tmp)
-            #         plot_x.append(factor)
-            #         plot_y.append(plot_f)
-            #     plot_x = np.array(plot_x)
-            #     plot_y = np.array(plot_y)
-            #     import matplotlib.pyplot as plt
-            #     plt.plot(plot_x,plot_y)
-            #     plt.ylabel('x along searching direction')
-            #     plt.ylabel('obj val')
-            #     plt.show()
-
-            # dbg_print_1("end 1D plot for obj function: ")
-
             if fallback_on_this_direction:
                 if self.bumpFallbackLevel():
                     continue    # try iteration again with new fallback
