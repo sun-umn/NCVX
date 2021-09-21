@@ -13,6 +13,8 @@
 # from numpy.random import default_rng
 
 from private import pygransoConstants as pC
+import time
+
 
 class AlgSR1SQP():
     def __init__(self):
@@ -37,8 +39,8 @@ class AlgSR1SQP():
         #  initialization parameters
         x                           = opts.x0
         n                           = len(x)
-        full_memory                 = opts.limited_mem_size == 0
-        self.damping                     = opts.bfgs_damping
+        # full_memory                 = opts.limited_mem_size == 0
+        # self.damping                     = opts.bfgs_damping
         
         #  convergence criteria termination parameters
         #  violation tolerances are checked and handled by penaltyfn_obj
@@ -76,21 +78,6 @@ class AlgSR1SQP():
         
         self.QPsolver               = opts.QPsolver
 
-        #  line search parameters
-        wolfe1                      = opts.wolfe1
-        wolfe2                      = opts.wolfe2
-        self.linesearch_nondescent_maxit = opts.linesearch_nondescent_maxit
-        self.linesearch_reattempts       = opts.linesearch_reattempts
-        self.linesearch_reattempts_x0    = opts.linesearch_reattempts_x0
-        self.linesearch_c_mu             = opts.linesearch_c_mu
-        self.linesearch_c_mu_x0          = opts.linesearch_c_mu_x0
-
-        self.linesearch_maxit = opts.linesearch_maxit
-        self.init_step_size = opts.init_step_size
-        self.is_backtrack_linesearch = opts.is_backtrack_linesearch
-        self.searching_direction_rescaling = opts.searching_direction_rescaling
-        self.disable_terminationcode_6 = opts.disable_terminationcode_6
-
         #  logging parameters
         self.print_level                 = opts.print_level
         print_frequency             = opts.print_frequency
@@ -119,17 +106,13 @@ class AlgSR1SQP():
 
         self.torch_device = torch_device
 
-        if full_memory and self.regularize_threshold < float("inf"):
-            get_apply_H_QP_fn   = lambda : self.getApplyHRegularized()
-        else:
-            #  No regularization option for limited memory BFGS 
-            get_apply_H_QP_fn   = lambda : self.getApplyH()
+        get_apply_H_QP_fn   = lambda : self.getApplyH()
 
         [self.apply_H_QP_fn, H_QP]   = get_apply_H_QP_fn()
         #  For applying the normal non-regularized version of H
         [self.apply_H_fn,*_]            = self.getApplyH()  
         
-        self.bfgs_update_fn          = lambda s,y,sty,damped: self.bfgs_obj.update(s,y,sty,damped)
+        self.sr1_update_fn          = lambda s,y,sty,damped: self.sr1_obj.update(s,y,sty,damped)
 
         #  function which caches up to ngrad previous gradients and will return 
         #  those which are sufficently close to the current iterate x. 
@@ -559,7 +542,7 @@ class AlgSR1SQP():
         
 
     def getApplyH(self):
-        applyH  = self.bfgs_obj.applyH
+        applyH  = self.sr1_obj.applyH
         H       = None
         return [applyH, H]
 
