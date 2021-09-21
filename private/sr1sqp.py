@@ -14,8 +14,16 @@
 
 from private.pygransoConstants import pC
 from private.neighborhoodCache import nC
+from private.qpSteeringStrategy import qpSS
+from private.linesearchWeakWolfe import lWW
 import time
 import numpy as np
+from dbg_print import dbg_print,dbg_print_1
+from numpy.random import default_rng
+import torch
+
+
+
 
 
 
@@ -78,6 +86,21 @@ class AlgSR1SQP():
         self.regularize_max_eigenvalues  = opts.regularize_max_eigenvalues
         
         self.QPsolver               = opts.QPsolver
+
+        #  line search parameters
+        wolfe1                      = opts.wolfe1
+        wolfe2                      = opts.wolfe2
+        self.linesearch_nondescent_maxit = opts.linesearch_nondescent_maxit
+        self.linesearch_reattempts       = opts.linesearch_reattempts
+        self.linesearch_reattempts_x0    = opts.linesearch_reattempts_x0
+        self.linesearch_c_mu             = opts.linesearch_c_mu
+        self.linesearch_c_mu_x0          = opts.linesearch_c_mu_x0
+
+        self.linesearch_maxit = opts.linesearch_maxit
+        self.init_step_size = opts.init_step_size
+        self.is_backtrack_linesearch = opts.is_backtrack_linesearch
+        self.searching_direction_rescaling = opts.searching_direction_rescaling
+        self.disable_terminationcode_6 = opts.disable_terminationcode_6
 
         #  logging parameters
         self.print_level                 = opts.print_level
@@ -156,7 +179,7 @@ class AlgSR1SQP():
                                 penaltyfn_parts,    H, 
                                 steering_l1_model,  steering_ineq_margin, 
                                 steering_maxit,     steering_c_viol, 
-                                steering_c_mu,      self.QPsolver, torch_device           )
+                                steering_c_mu,      self.QPsolver, torch_device )
 
         self.linesearch_fn   = lambda x,f,g,p,ls_maxit: lWW.linesearchWeakWolfe( 
                                 x, f, g, p,
@@ -209,8 +232,6 @@ class AlgSR1SQP():
                 except Exception as e:
                     print(e)
                     print("PyGRANSO:steeringQuadprogFailure")
-
-                # dbg_print("Skip try & except in bfgssqp")
                 
 
                 penalty_parameter_changed = (mu_new != self.mu)
@@ -218,8 +239,8 @@ class AlgSR1SQP():
                     [f,g,self.mu] = self.penaltyfn_obj.updatePenaltyParameter(mu_new)
                 
             elif self.fallback_level == 2:
-                dbg_print_1( " try standard BFGS ")
-                p = -self.apply_H_fn(g)   # standard BFGS 
+                dbg_print_1( " try standard SR1 ")
+                p = -self.apply_H_fn(g)   # standard SR1 
             elif self.fallback_level == 3:
                 dbg_print_1( " try steep_descent ")
                 p = -g;     # steepest descent
@@ -234,11 +255,8 @@ class AlgSR1SQP():
                 self.random_attempts = self.random_attempts + 1
             
             if self.searching_direction_rescaling:
-                dbg_print_1("start rescaling search direction p:") 
                 p_norm = torch.norm(p).item()
                 p =  1 * p / p_norm
-                dbg_print_1("norm of d = {}".format(torch.norm(p).item()))
-                dbg_print_1("end rescaling search direction p.")
                 
             [p,is_descent,fallback_on_this_direction] = self.checkDirection(p,g)
 
