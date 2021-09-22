@@ -29,14 +29,14 @@ class H_obj_struct:
         #             P145 SR1 method
 
         # there is no symmetric rank-one updating formula satisfying the secant equation
-        if s != Hy and (s-Hy).t()@y == 0:
+        if torch.all(s != Hy) and (s-Hy).t()@y == 0:
             skipped = 2
             self.sty_fails += 1
             print("change name for sty_fails")
             return skipped
         
         # simple update: unchanged H
-        elif s == Hy:
+        elif torch.all(s == Hy):
             return skipped
 
         # else:
@@ -76,9 +76,9 @@ class H_obj_struct:
         return counts
 
 
-def bfgsHessianInverse(H,scaleH0):
-#    bfgsHessianInverse:
-#        An object that maintains and updates a BFGS approximation to the 
+def sr1HessianInverse(H,scaleH0):
+#    sr1HessianInverse:
+#        An object that maintains and updates a sr1 approximation to the 
 #        inverse Hessian.
 
     H_obj = H_obj_struct(H,scaleH0)

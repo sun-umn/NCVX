@@ -1,18 +1,4 @@
-# import torch
-# from private import pygransoConstants as pC, bfgsDamping as bD, regularizePosDefMatrix as rPDM, linesearchWeakWolfe as lWW
-# from private.neighborhoodCache import nC
-# from private.qpSteeringStrategy import qpSS
-# from private.qpTerminationCondition import qpTC
-# import time
-# from pygransoStruct import general_struct
-# import math
-# import numpy.linalg as LA
-# import numpy as np
-# from dbg_print import dbg_print,dbg_print_1
-# from numpy import conjugate as conj
-# from numpy.random import default_rng
-
-import pygransoConstants as pC, linesearchWeakWolfe as lWW, regularizePosDefMatrix as rPDM
+from private import pygransoConstants as pC, linesearchWeakWolfe as lWW, regularizePosDefMatrix as rPDM
 from private.neighborhoodCache import nC
 from private.qpSteeringStrategy import qpSS
 from private.qpTerminationCondition import qpTC
@@ -558,8 +544,7 @@ class AlgSR1SQP():
         #  This should only be called when running full memory SR1 as
         #  getState() only returns the inverse Hessian as a dense matrix in
         #  this case.  For L-SR1, getState() returns a struct of data.
-        [Hr,code] = rPDM.regularizePosDefMatrix( self.bfgs_obj.getState(),self.regularize_threshold,  
-                                            self.regularize_max_eigenvalues  )
+        [Hr,code] = rPDM.regularizePosDefMatrix( self.sr1_obj.getState(),self.regularize_threshold, self.regularize_max_eigenvalues )
         if code == 2 and self.print_level > 2:
             self.printer.regularizeError(iter)
             

@@ -1,7 +1,8 @@
 import torch
 from private.makePenaltyFunction import PanaltyFuctions
-from private import bfgsHessianInverse as bfgsHI, printMessageBox as pMB
+from private import bfgsHessianInverse as bfgsHI, printMessageBox as pMB, sr1HessianInverse as sr1HI
 from private.bfgssqp import AlgBFGSSQP
+from private.sr1sqp import AlgSR1SQP
 from private.pygransoPrinter import pgP
 from pygransoOptions import pygransoOptions
 from private.solveQP import getErr
@@ -361,7 +362,12 @@ def pygranso(var_dim_map=None,nn_model=None, torch_device = torch.device('cpu'),
     try: 
         [problem_fns,opts] = processArguments(n,obj_fn,user_opts, torch_device)
         # check realted function: np.matrix.H is recommened, consider np.transpose/conjugate 
-        [bfgs_hess_inv_obj,opts] = getBfgsManager(opts)
+
+        sr1_flag = True
+        if sr1_flag:
+            [sr1_hess_inv_obj,opts] = getSr1Manager(opts)
+        else:
+            [bfgs_hess_inv_obj,opts] = getBfgsManager(opts)
 
         # construct the penalty function object and evaluate at x0
         # unconstrained problems will reset mu to one and mu will be fixed
@@ -396,23 +402,41 @@ def pygranso(var_dim_map=None,nn_model=None, torch_device = torch.device('cpu'),
     
 
     try:
-        bfgssqp_obj = AlgBFGSSQP()
-        info = bfgssqp_obj.bfgssqp(f_eval_fn, penaltyfn_obj,bfgs_hess_inv_obj,opts,printer, torch_device)
+        sr1_flag = True
+        if sr1_flag:
+            sr1sqp_obj = AlgSR1SQP()
+            info = sr1sqp_obj.sr1sqp(f_eval_fn, penaltyfn_obj,sr1_hess_inv_obj,opts,printer, torch_device)
+        else:
+            bfgssqp_obj = AlgBFGSSQP()
+            info = bfgssqp_obj.bfgssqp(f_eval_fn, penaltyfn_obj,bfgs_hess_inv_obj,opts,printer, torch_device)
     except Exception as e:
         print(e)   
         print("Error: pygranso bfgssqp ")
         # recover optimization computed so far
         penaltyfn_obj.restoreSnapShot()
     
-    # package up solution in output argument
-    [ soln, stat_value ]        = penaltyfn_obj.getBestSolutions()
-    soln.H_final                = bfgs_hess_inv_obj.getState()
-    soln.stat_value             = stat_value
-    bfgs_counts                 = bfgs_hess_inv_obj.getCounts()
-    soln.iters                  = bfgs_counts.requests
-    soln.BFGS_updates           = bfgs_counts
-    soln.fn_evals               = penaltyfn_obj.getNumberOfEvaluations()
-    soln.termination_code       = info.termination_code
+    sr1_flag = True
+
+    if sr1_flag:
+        # package up solution in output argument
+        [ soln, stat_value ]        = penaltyfn_obj.getBestSolutions()
+        soln.H_final                = sr1_hess_inv_obj.getState()
+        soln.stat_value             = stat_value
+        sr1_counts                 = sr1_hess_inv_obj.getCounts()
+        soln.iters                  = sr1_counts.requests
+        soln.SR1_updates           = sr1_counts
+        soln.fn_evals               = penaltyfn_obj.getNumberOfEvaluations()
+        soln.termination_code       = info.termination_code
+    else:
+        # package up solution in output argument
+        [ soln, stat_value ]        = penaltyfn_obj.getBestSolutions()
+        soln.H_final                = bfgs_hess_inv_obj.getState()
+        soln.stat_value             = stat_value
+        bfgs_counts                 = bfgs_hess_inv_obj.getCounts()
+        soln.iters                  = bfgs_counts.requests
+        soln.BFGS_updates           = bfgs_counts
+        soln.fn_evals               = penaltyfn_obj.getNumberOfEvaluations()
+        soln.termination_code       = info.termination_code
 
     
     [qp_requests,qp_errs]       = getErr()
@@ -496,6 +520,25 @@ def getBfgsManager(opts):
     delattr(opts,'limited_mem_warm_start')
 
     return [bfgs_obj,opts]
+
+def getSr1Manager(opts):
+    if opts.limited_mem_size == 0:
+        get_sr1_fn = lambda H,scaleH0, *_ : sr1HI.sr1HessianInverse(H,scaleH0)
+        lsr1_args  = None
+        dbg_print("CAll BFGS: Skip L-SR1 for now")
+    else:
+        dbg_print("L-SR1:TODO")
+    
+    sr1_obj = get_sr1_fn(opts.H0,opts.scaleH0,lsr1_args)
+    # DEBUG TEST:
+    # print(bfgs_obj.getState() )
+    # print(bfgs_obj.getCounts() )
+    
+    # remove potentially large and unnecessary data from the opts structure
+    delattr(opts,'H0')
+    delattr(opts,'limited_mem_warm_start')
+
+    return [sr1_obj,opts]
 
 def printPrescalingMsg(prescaling_threshold,grad_norms,block_msg_fn):
     pass
