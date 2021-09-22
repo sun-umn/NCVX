@@ -12,15 +12,18 @@
 # from numpy import conjugate as conj
 # from numpy.random import default_rng
 
-from private.pygransoConstants import pC
+import pygransoConstants as pC, linesearchWeakWolfe as lWW, regularizePosDefMatrix as rPDM
 from private.neighborhoodCache import nC
 from private.qpSteeringStrategy import qpSS
-from private.linesearchWeakWolfe import lWW
+from private.qpTerminationCondition import qpTC
+from pygransoStruct import general_struct
 import time
 import numpy as np
 from dbg_print import dbg_print,dbg_print_1
 from numpy.random import default_rng
 import torch
+import math
+
 
 
 
@@ -205,7 +208,7 @@ class AlgSR1SQP():
             # However, if the returned p is empty, this means all QPs failed
             # hard.  As a fallback, steering will be retried with steepest
             # descent, i.e. H temporarily  set to the identity.  If this
-            # fallback also fails hard, then the standard BFGS search direction
+            # fallback also fails hard, then the standard sr1 search direction
             # on penalty function is tried.  If this also fails, then steepest
             # will be tried.  Finally, if all else fails, randomly generated
             # directions are tried as a last ditch effort.
@@ -269,7 +272,7 @@ class AlgSR1SQP():
                 
             else: # ATTEMPT LINE SEARCH
                 f_prev = f      # for relative termination tolerance
-                self.g_prev = g      # necessary for BFGS update
+                self.g_prev = g      # necessary for sr1 update
                 if is_descent:
                     ls_procedure_fn = lambda x,f,g,p: self.linesearchDescent(x,f,g,p)
                 else:
@@ -338,26 +341,20 @@ class AlgSR1SQP():
             
             ls_evals = self.penaltyfn_obj.getNumberOfEvaluations()-evals_so_far
             
-            # Perform full or limited memory BFGS update
+            # Perform full memory SR1 update
             # This computation is done before checking the termination
-            # conditions because we wish to provide the most recent (L)BFGS
+            # conditions because we wish to provide the most recent (L)SR1
             # data to users in case they desire to restart.   
-            self.applyBfgsUpdate(alpha,p,g,self.g_prev)
+            self.applySr1Update(alpha,p,g,self.g_prev)
         
             if np.any(halt_log_fn!=None):
-                user_halt = halt_log_fn(self.iter, x, self.penaltyfn_at_x, p, 
-                                        get_bfgs_state_fn, H_QP, 
-                                        ls_evals, alpha, n_grad_samples, 
-                                        stat_vec, self.stat_val, self.fallback_level  )
-            
-        
+                user_halt = halt_log_fn(self.iter, x, self.penaltyfn_at_x, p, get_sr1_state_fn, H_QP, 
+                                        ls_evals, alpha, n_grad_samples, stat_vec, self.stat_val, self.fallback_level  )
+                  
             if self.print_level and (self.iter % print_frequency) == 0:
-                self.printer.iter(   self.iter, self.penaltyfn_at_x, 
-                                self.fallback_level, self.random_attempts,  
-                                ls_evals,       alpha,  
-                                n_grad_samples, self.stat_val,   qps_solved  );     
+                self.printer.iter(   self.iter, self.penaltyfn_at_x, self.fallback_level, self.random_attempts,  
+                                    ls_evals, alpha, n_grad_samples, self.stat_val, qps_solved  );     
   
-                
             # reset fallback level counters
             self.fallback_level  = min_fallback_level
             self.random_attempts = 0
@@ -487,8 +484,6 @@ class AlgSR1SQP():
         stat_vec        = self.penaltyfn_at_x.p_grad
         stat_value      = torch.norm(stat_vec)
 
-        
-
         self.opt_tol = torch.as_tensor(self.opt_tol,device = self.torch_device, dtype=torch.double)
         if stat_value <= self.opt_tol:
             n_qps       = 0
@@ -511,15 +506,14 @@ class AlgSR1SQP():
         
         #  nonsmooth optimality measure
         qPTC_obj = qpTC()
-        [stat_vec,n_qps,ME] = qPTC_obj.qpTerminationCondition(   self.penaltyfn_at_x, grad_samples,
-                                                        self.apply_H_QP_fn, self.QPsolver, self.torch_device)
+        [stat_vec,n_qps,ME] = qPTC_obj.qpTerminationCondition( self.penaltyfn_at_x, grad_samples, self.apply_H_QP_fn, self.QPsolver, self.torch_device)
         stat_value = torch.norm(stat_vec).item()
         self.penaltyfn_obj.addStationarityMeasure(stat_value)
         
         if self.print_level > 2 and  len(ME) > 0:
             self.printer.qpError(self.iter,ME,'TERMINATION')
         
-        return [  stat_vec, stat_value, n_qps, n_samples, dist_evals ]
+        return [ stat_vec, stat_value, n_qps, n_samples, dist_evals ]
 
     def converged(self):
         tf = True
@@ -543,18 +537,15 @@ class AlgSR1SQP():
         if code == 8 and self.constrained:
             self.info.mu_lowest      = self.mu_lowest
 
-    def applyBfgsUpdate(self,alpha,p,g,gprev):
+    def applySr1Update(self,alpha,p,g,gprev):
                     
         s               = alpha*p
         y               = g - gprev
-        sty             = torch.conj(s.t())@y
         
-        if self.damping > 0:
-            [y,sty,damped] = bD.bfgsDamping(self.damping,self.apply_H_fn,s,y,sty)
-        
-        update_code     = self.bfgs_update_fn(s,y,sty,damped)
+        update_code     = self.sr1_update_fn(s,y)
         
         if update_code > 0 and self.print_level > 1:
+            print("Please check self.printer.bfgsInfo(self.iter,update_code) in sr1 sqp")
             self.printer.bfgsInfo(self.iter,update_code)
         
 
@@ -564,9 +555,9 @@ class AlgSR1SQP():
         return [applyH, H]
 
     def getApplyHRegularized(self):
-        #  This should only be called when running full memory BFGS as
+        #  This should only be called when running full memory SR1 as
         #  getState() only returns the inverse Hessian as a dense matrix in
-        #  this case.  For L-BFGS, getState() returns a struct of data.
+        #  this case.  For L-SR1, getState() returns a struct of data.
         [Hr,code] = rPDM.regularizePosDefMatrix( self.bfgs_obj.getState(),self.regularize_threshold,  
                                             self.regularize_max_eigenvalues  )
         if code == 2 and self.print_level > 2:
@@ -577,7 +568,7 @@ class AlgSR1SQP():
         #  We only return Hr so that it may be passed to the halt_log_fn,
         #  since (advanced) users may wish to look at it.  However, if
         #  regularization was actually not applied, i.e. H = Hr, then we can
-        #  set Hr = [].  Users can already get H since @bfgs_obj.getState
+        #  set Hr = [].  Users can already get H since @sr1_obj.getState
         #  is passed into halt_log_fn and the [] value will indicate to the 
         #  user that regularization was not applied (which can be checked
         #  more efficiently and quickly than comparing two matrices).   

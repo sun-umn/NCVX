@@ -1,6 +1,6 @@
 # import numpy as np
 # from numpy.core.numeric import Inf
-# from pygransoStruct import general_struct
+from pygransoStruct import general_struct
 # from numpy import conjugate as conj
 # from dbg_print import dbg_print_1
 import torch
