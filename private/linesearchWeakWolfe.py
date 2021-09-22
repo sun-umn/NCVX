@@ -100,7 +100,7 @@ def linesearchWeakWolfe( x0, f0, grad0, d, f_eval_fn, obj_fn, c1 = 0, c2 = 0.5, 
             gradalpha = grad.detach().clone()
             beta = t
             # gradbeta = grad.detach().clone()
-            dbg_print_1("final step size t = %f "%t)
+            # dbg_print_1("final step size t = %f "%t)
             # return [alpha, xalpha, falpha, gradalpha, fail, beta, gradbeta, n_evals] 
             return [alpha, xalpha, falpha, gradalpha, fail] 
         

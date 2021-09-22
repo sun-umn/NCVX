@@ -310,7 +310,7 @@ class AlgSR1SQP():
             else:
                 self.rel_diff = abs(f - f_prev) / abs(f_prev)
 
-            dbg_print_1("self.rel_diff = %f"%self.rel_diff)
+            # dbg_print_1("self.rel_diff = %f"%self.rel_diff)
 
             
             # update x to accepted iterate from line search
@@ -386,6 +386,10 @@ class AlgSR1SQP():
                 is_descent  = True
             else:
                 is_descent  = gtp < 0
+                if not is_descent:
+                    dbg_print_1("is not descent direction")
+                    # is_descent = True
+                    # dbg_print_1("Hardcode descent")
             
             if not is_descent and self.linesearch_nondescent_maxit == 0:
                 fallback    = True

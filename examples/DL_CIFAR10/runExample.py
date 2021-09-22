@@ -83,6 +83,8 @@ def mainFun():
         opts.searching_direction_rescaling = True
         opts.disable_terminationcode_6 = True
 
+        opts.linesearch_nondescent_maxit = 2
+
         outputs = model(inputs.to(device=device, dtype=torch.double) )
         acc = (outputs.max(1)[1] == labels.to(device=device, dtype=torch.double) ).sum().item()/labels.size(0)
 
