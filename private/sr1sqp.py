@@ -11,11 +11,6 @@ import torch
 import math
 
 
-
-
-
-
-
 class AlgSR1SQP():
     def __init__(self):
         pass
@@ -75,21 +70,6 @@ class AlgSR1SQP():
         self.regularize_max_eigenvalues  = opts.regularize_max_eigenvalues
         
         self.QPsolver               = opts.QPsolver
-
-        # #  line search parameters
-        # wolfe1                      = opts.wolfe1
-        # wolfe2                      = opts.wolfe2
-        # self.linesearch_nondescent_maxit = opts.linesearch_nondescent_maxit
-        # self.linesearch_reattempts       = opts.linesearch_reattempts
-        # self.linesearch_reattempts_x0    = opts.linesearch_reattempts_x0
-        # self.linesearch_c_mu             = opts.linesearch_c_mu
-        # self.linesearch_c_mu_x0          = opts.linesearch_c_mu_x0
-
-        # self.linesearch_maxit = opts.linesearch_maxit
-        # self.init_step_size = opts.init_step_size
-        # self.is_backtrack_linesearch = opts.is_backtrack_linesearch
-        # self.searching_direction_rescaling = opts.searching_direction_rescaling
-        # self.disable_terminationcode_6 = opts.disable_terminationcode_6
 
         #  logging parameters
         self.print_level                 = opts.print_level
@@ -170,23 +150,23 @@ class AlgSR1SQP():
                                 steering_maxit,     steering_c_viol, 
                                 steering_c_mu,      self.QPsolver, torch_device )
 
-        # self.linesearch_fn   = lambda x,f,g,p,ls_maxit: lWW.linesearchWeakWolfe( 
-        #                         x, f, g, p,
-        #                         lambda x_in: self.penaltyfn_obj.evaluatePenaltyFunction4linesearch(x_in),                                  
-        #                         lambda x_in: self.penaltyfn_obj.evaluatePenaltyFunction(x_in),      
-        #                         wolfe1, wolfe2, self.fvalquit, ls_maxit, step_tol, self.init_step_size, self.linesearch_maxit, self.is_backtrack_linesearch, self.torch_device)
-                                                        
+                                   
         #  we'll use a while loop so we can explicitly update the counter only
-        #  for successful updates.  This way, if the search direction direction
-        #  can't be used and the code falls back to alternative method to try
-        #  a new search direction, the iteration count is not increased for
-        #  these subsequent fallback attempts
+        #  for successful updates.  
         
         #  loop control variables
         self.fallback_level      = min_fallback_level
         self.random_attempts     = 0
         self.iter                = 1
         evals_so_far        = self.penaltyfn_obj.getNumberOfEvaluations()
+
+        opts.trust_region_radius = 1.
+        opts.trust_region_eta = 1e-2
+        opts.trust_region_r = 1e-8
+
+        delta = opts.trust_region_radius
+        eta = opts.trust_region_eta
+        r = opts.trust_region_r
 
         while self.iter <= maxit:
             # Call standard steering strategy to produce search direction p
@@ -243,71 +223,50 @@ class AlgSR1SQP():
                 p = rng.standard_normal(size=(n,1))
                 self.random_attempts = self.random_attempts + 1
             
-            # if self.searching_direction_rescaling:
-            #     p_norm = torch.norm(p).item()
-            #     p =  1 * p / p_norm
-                
-            # [p,is_descent,fallback_on_this_direction] = self.checkDirection(p,g)
-
-            # if fallback_on_this_direction:
-            #     if self.bumpFallbackLevel():
-            #         continue    # try iteration again with new fallback
-            #     else: # all fallbacks have failed - quit!
-            #         self.prepareTermination(9); # not a descent descent direction
-            #         return self.info
-                
-            # else: # ATTEMPT LINE SEARCH
-            #     f_prev = f      # for relative termination tolerance
-            #     self.g_prev = g      # necessary for sr1 update
-            #     if is_descent:
-            #         ls_procedure_fn = lambda x,f,g,p: self.linesearchDescent(x,f,g,p)
-            #     else:
-            #         ls_procedure_fn = lambda x,f,g,p: self.linesearchNondescent(x,f,g,p)
-                
-            #     # this will also update gprev if it lowers mu and it succeeds
-            #     [alpha,x_new,f,g,linesearch_failed] = ls_procedure_fn(x,f,g,p)
-
-            # if self.disable_terminationcode_6:
-            #     if linesearch_failed and self.fallback_level == 3:
-            #         dbg_print_1("make movement after the third fallback failing")
-            #         linesearch_failed = 0
-            #         dbg_print_1("end modification")
-
-            # if linesearch_failed:
-            #     #  first get lowest mu attempted (restore will erase it)
-            #     self.mu_lowest = self.penaltyfn_obj.getPenaltyParameter()
-            #     #  now, for all failure types, restore last accepted iterate
-            #     can_fallback = self.bumpFallbackLevel()
-            #     if linesearch_failed == 1:  # bracketed minimizer but LS failed
-            #         feasible = self.penaltyfn_obj.isFeasibleToTol()
-            #         if halt_on_linesearch_bracket and feasible:
-            #             self.prepareTermination(6)
-            #             return self.info
-            #         elif can_fallback:
-            #             continue
-            #         else: # return 6 (feasible) or 7 (infeasible)
-            #             self.prepareTermination(7 - feasible)
-            #             return self.info
-                    
-            #     elif linesearch_failed == 2:  # couldn't bracket minimizer
-            #         self.prepareTermination(8)
-            #         return self.info
-            #     else: # failed on nondescent direction
-            #         if can_fallback:
-            #             continue
-            #         else:
-            #             self.prepareTermination(9)
-                    
-            # ATTEMPT Trust region
+            ##################################################################
+            # Try trust region method
             f_prev = f      # for relative termination tolerance
             self.g_prev = g      # necessary for sr1 update
-            
-            trust_region_procedure_fn = lambda x,f,g,p: self.linesearchNondescent(x,f,g,p)
-            
-            # this will also update gprev if it lowers mu and it succeeds
-            [alpha,x_new,f,g,linesearch_failed] = trust_region_procedure_fn(x,f,g,p)
+
+            B = self.sr1_obj.getState()
+            s = trust_region_subproblem(g,B,delta)
+
+            [f,g,is_feasible] = self.penaltyfn_obj.evaluatePenaltyFunction(x+s)
+            y = g - self.g_prev
+            # actual reduction
+            ared = f_prev - f
+            # predicted reduction
+            pred = - (self.g_prev.t()@s + .5*s.t()@B@s)
+            ap_ratio = ared/pred
+
+            # update x to accepted iterate from trust region
+            if ap_ratio > eta:
+                x = x + s
+            # otherwise no movement
+
+            if ap_ratio > 0.75:
+                if torch.norm(s) <= 0.8*delta:
+                    pass
+                    # unchanged delta
+                else:
+                    delta = 2*delta
+            elif ap_ratio >= 0.1 and ap_ratio <= 0.75:
+                pass
+                # unchanged delta
+            else:
+                delta = .5*delta
+
+            # if (6.26) holds
+            if torch.abs(s.t()@(y-B@s)) >= r * torch.norm(s) * torch.norm(y-B@s):
+                # Perform full memory SR1 update
+                # This computation is done before checking the termination
+                # conditions because we wish to provide the most recent (L)SR1
+                # data to users in case they desire to restart.   
+                self.applySr1Update(s,g,self.g_prev)
+            # else no update
             
             # TRUST REGION SUCCEEDED 
+            ##################################################################
             
             # compute relative difference of change in penalty function values
             # this will be infinity if previous value was 0 or if the value of
@@ -317,12 +276,6 @@ class AlgSR1SQP():
             else:
                 self.rel_diff = abs(f - f_prev) / abs(f_prev)
 
-            # dbg_print_1("self.rel_diff = %f"%self.rel_diff)
-
-            
-            # update x to accepted iterate from line search
-            # mu is already updated by line search if lowered
-            x = x_new
 
             # Update all components of the penalty function evaluated
             # at the new accepted iterate x and snapsnot the data.
@@ -334,11 +287,7 @@ class AlgSR1SQP():
             
             ls_evals = self.penaltyfn_obj.getNumberOfEvaluations()-evals_so_far
             
-            # Perform full memory SR1 update
-            # This computation is done before checking the termination
-            # conditions because we wish to provide the most recent (L)SR1
-            # data to users in case they desire to restart.   
-            self.applySr1Update(alpha,p,g,self.g_prev)
+            
         
             if np.any(halt_log_fn!=None):
                 user_halt = halt_log_fn(self.iter, x, self.penaltyfn_at_x, p, get_sr1_state_fn, H_QP, 
@@ -379,96 +328,7 @@ class AlgSR1SQP():
 
     #  PRIVATE NESTED FUNCTIONS
     
-    # def checkDirection(self,p,g):    
-    #     fallback            = False
-    #     gtp                 = torch.conj(g.t())@p
-    #     gtp = gtp.item()
-    #     if math.isnan(gtp) or math.isinf(gtp):
-    #         is_descent      = False
-    #         fallback        = True    
-    #     else:
-    #         if gtp > 0 and self.fallback_level == self.LAST_FALLBACK_LEVEL:
-    #             #  randomly generated ascent direction, flip sign of p
-    #             p           = -p
-    #             is_descent  = True
-    #         else:
-    #             is_descent  = gtp < 0
-    #             if not is_descent:
-    #                 dbg_print_1("is not descent direction")
-            
-    #         if not is_descent and self.linesearch_nondescent_maxit == 0:
-    #             fallback    = True
-            
-    #     return [p,is_descent,fallback]
-
-    # def bumpFallbackLevel(self):
-    #     self.penaltyfn_obj.restoreSnapShot()
-       
-    #     can_fallback        = self.fallback_level < self.max_fallback_level
-    #     if can_fallback:
-    #         self.fallback_level  = self.fallback_level + 1
-    #     elif self.fallback_level == self.LAST_FALLBACK_LEVEL and self.random_attempts < self.max_random_attempts:
-    #         can_fallback    = True
-        
-    #     return can_fallback
-
-    # #  only try a few line search iterations if p is not a descent direction
-    # def linesearchNondescent(self,x,f,g,p):
-    #     # [alpha,x,f,g,fail,_,_,_] = self.linesearch_fn( x,f,g,p,self.linesearch_nondescent_maxit )
-    #     [alpha,x,f,g,fail] = self.linesearch_fn( x,f,g,p,self.linesearch_nondescent_maxit )
-    #     fail = 0 + 3*(fail > 0)
-    #     return [alpha, x, f, g, fail]
-
-    # #  regular weak Wolfe line search 
-    # #  NOTE: this function may lower variable "mu" for constrained problems
-    # def linesearchDescent(self,x,f,g,p):
-        
-    #     #  we need to keep around f and g so use _ls names for ls results
-    #     ls_fn                       = lambda f,g: self.linesearch_fn(x,f,g,p,float("inf"))
-    #     # [alpha,x_ls,f_ls,g_ls,fail,_,_,_] = ls_fn(f,g)
-    #     [alpha,x_ls,f_ls,g_ls,fail] = ls_fn(f,g)
-                        
-    #     #  If the problem is constrained and the line search fails without 
-    #     #  bracketing a minimizer, it may be because the objective is 
-    #     #  unbounded below off the feasible set.  In this case, we can retry
-    #     #  the line search with progressively lower values of mu.   
-    #     if self.constrained and fail == 2:
-        
-    #         mu_ls = self.mu  # the original value of the penalty parameter
-           
-    #         if self.iter < 2: 
-    #             reattempts  = self.linesearch_reattempts_x0
-    #             ls_c_mu     = self.linesearch_c_mu_x0
-    #         else:
-    #             reattempts  = self.linesearch_reattempts
-    #             ls_c_mu     = self.linesearch_c_mu
-              
-    #         for j in range(reattempts):
-    #             #  revert to last good iterate (since line search failed)
-    #             self.penaltyfn_obj.restoreSnapShot()
-    #             #  lower the trial line search penalty parameter further
-    #             mu_ls       = ls_c_mu * mu_ls
-    #             [f,g]       = self.penaltyfn_obj.updatePenaltyParameter(mu_ls)
-    #             gprev_ls    = g
-                
-    #             if self.print_level > 1:
-    #                 self.printer.lineSearchRestart(self.iter,mu_ls)
-                
-    #             [alpha,x_ls,f_ls,g_ls,failed_again] = ls_fn(f,g)
-               
-    #             if not failed_again: # LINE SEARCH SUCCEEDED 
-    #                 #  make sure mu and and gprev are up-to-date, since the
-    #                 #  penalty parameter has been lowered 
-    #                 fail    = False
-    #                 self.mu      = self.penaltyfn_obj.getPenaltyParameter()
-    #                 self.g_prev  = gprev_ls
-    #                 return
-       
-    #     #  LINE SEARCH EITHER SUCCEEDED OR FAILED
-    #     #  no need to restore snapshot if line search failed since 
-    #     #  bumpFallbackLevel() will be called and it requests the last  
-    #     #  snapshot to be restored.
-    #     return [alpha, x_ls, f_ls, g_ls, fail]
+    
 
     def computeApproxStationarityVector(self):
             
@@ -531,9 +391,8 @@ class AlgSR1SQP():
         if code == 8 and self.constrained:
             self.info.mu_lowest      = self.mu_lowest
 
-    def applySr1Update(self,alpha,p,g,gprev):
+    def applySr1Update(self,s,g,gprev):
                     
-        s               = alpha*p
         y               = g - gprev
         
         update_code     = self.sr1_update_fn(s,y)
