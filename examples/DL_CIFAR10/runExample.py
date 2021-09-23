@@ -72,18 +72,23 @@ def mainFun():
         opts.print_level = 1
         opts.print_frequency = 1
         # opts.print_ascii = True
-        # opts.wolfe1 = 0.1
-        # opts.wolfe2 = 1e-4
-        opts.halt_on_linesearch_bracket = False
-        opts.max_fallback_level = 3
-        opts.min_fallback_level = 2
-        opts.init_step_size = 1e-2
-        opts.linesearch_maxit = 25
-        opts.is_backtrack_linesearch = True
-        opts.searching_direction_rescaling = True
-        opts.disable_terminationcode_6 = True
 
-        opts.linesearch_nondescent_maxit = 2
+        sr1_flag = True
+
+        if sr1_flag == False:
+                # opts.wolfe1 = 0.1
+                # opts.wolfe2 = 1e-4
+                opts.halt_on_linesearch_bracket = False
+                opts.max_fallback_level = 3
+                opts.min_fallback_level = 2
+                opts.init_step_size = 1e-2
+                opts.linesearch_maxit = 25
+                opts.is_backtrack_linesearch = True
+                opts.searching_direction_rescaling = True
+                opts.disable_terminationcode_6 = True
+                opts.linesearch_nondescent_maxit = 25
+        else:
+                pass
 
         outputs = model(inputs.to(device=device, dtype=torch.double) )
         acc = (outputs.max(1)[1] == labels.to(device=device, dtype=torch.double) ).sum().item()/labels.size(0)
