@@ -99,11 +99,11 @@ class AlgSR1SQP():
 
         self.torch_device = torch_device
 
-        get_apply_H_QP_fn   = lambda : self.getApplyH()
+        # get_apply_H_QP_fn   = lambda : self.getApplyH()
 
-        [self.apply_H_QP_fn, H_QP]   = get_apply_H_QP_fn()
-        #  For applying the normal non-regularized version of H
-        [self.apply_H_fn,*_]            = self.getApplyH()  
+        # [self.apply_H_QP_fn, H_QP]   = get_apply_H_QP_fn()
+        # #  For applying the normal non-regularized version of H
+        # [self.apply_H_fn,*_]            = self.getApplyH()  
         
         self.sr1_update_fn          = lambda s,y: self.sr1_obj.update(s,y)
 
@@ -127,6 +127,8 @@ class AlgSR1SQP():
             APPLY_IDENTITY      = lambda x: x
         
         if np.any(halt_log_fn!=None):
+            print("TODO: halt_log_fn in sr1sqp")
+            H_QP = None
             get_sr1_state_fn = lambda : self.sr1_obj.getState()
             user_halt = halt_log_fn(0, x, self.penaltyfn_at_x, np.zeros((n,1)), get_sr1_state_fn, H_QP, 1, 0, 1, stat_vec, self.stat_val, 0 )
         
@@ -209,7 +211,7 @@ class AlgSR1SQP():
                 
             elif self.fallback_level == 2:
                 dbg_print_1( " try standard SR1 ")
-                p = -self.apply_H_fn(g)   # standard SR1 
+                # no searching direction needed
             elif self.fallback_level == 3:
                 dbg_print_1( " try steep_descent ")
                 p = -g;     # steepest descent
@@ -290,10 +292,14 @@ class AlgSR1SQP():
             
         
             if np.any(halt_log_fn!=None):
+                print("TODO halt_log_fn")
+                alpha = 1.
                 user_halt = halt_log_fn(self.iter, x, self.penaltyfn_at_x, p, get_sr1_state_fn, H_QP, 
                                         ls_evals, alpha, n_grad_samples, stat_vec, self.stat_val, self.fallback_level  )
                   
             if self.print_level and (self.iter % print_frequency) == 0:
+                # step size
+                alpha = torch.norm(s)
                 self.printer.iter(   self.iter, self.penaltyfn_at_x, self.fallback_level, self.random_attempts,  
                                     ls_evals, alpha, n_grad_samples, self.stat_val, qps_solved  );     
   
@@ -313,10 +319,10 @@ class AlgSR1SQP():
                 return self.info
             
             
-            #  if cond(H) > regularize_limit, make a regularized version of H
-            #  for QP solvers to use on next iteration
-            if self.iter < maxit:     # don't bother if maxit has been reached
-                [self.apply_H_QP_fn, H_QP] = get_apply_H_QP_fn()
+            # #  if cond(H) > regularize_limit, make a regularized version of H
+            # #  for QP solvers to use on next iteration
+            # if self.iter < maxit:     # don't bother if maxit has been reached
+            #     [self.apply_H_QP_fn, H_QP] = get_apply_H_QP_fn()
             
 
             self.iter = self.iter + 1   # only increment counter for successful updates
@@ -402,32 +408,32 @@ class AlgSR1SQP():
             self.printer.bfgsInfo(self.iter,update_code)
         
 
-    def getApplyH(self):
-        applyH  = self.sr1_obj.applyH
-        H       = None
-        return [applyH, H]
+    # def getApplyH(self):
+    #     applyH  = self.sr1_obj.applyH
+    #     H       = None
+    #     return [applyH, H]
 
-    def getApplyHRegularized(self):
-        #  This should only be called when running full memory SR1 as
-        #  getState() only returns the inverse Hessian as a dense matrix in
-        #  this case.  For L-SR1, getState() returns a struct of data.
-        [Hr,code] = rPDM.regularizePosDefMatrix( self.sr1_obj.getState(),self.regularize_threshold, self.regularize_max_eigenvalues )
-        if code == 2 and self.print_level > 2:
-            self.printer.regularizeError(iter)
+    # def getApplyHRegularized(self):
+    #     #  This should only be called when running full memory SR1 as
+    #     #  getState() only returns the Hessian as a dense matrix in
+    #     #  this case.  For L-SR1, getState() returns a struct of data.
+    #     [Hr,code] = rPDM.regularizePosDefMatrix( self.sr1_obj.getState(),self.regularize_threshold, self.regularize_max_eigenvalues )
+    #     if code == 2 and self.print_level > 2:
+    #         self.printer.regularizeError(iter)
             
-        applyHr  = lambda x: Hr@x
+    #     applyHr  = lambda x: Hr@x
         
-        #  We only return Hr so that it may be passed to the halt_log_fn,
-        #  since (advanced) users may wish to look at it.  However, if
-        #  regularization was actually not applied, i.e. H = Hr, then we can
-        #  set Hr = [].  Users can already get H since @sr1_obj.getState
-        #  is passed into halt_log_fn and the [] value will indicate to the 
-        #  user that regularization was not applied (which can be checked
-        #  more efficiently and quickly than comparing two matrices).   
-        if code == 1:
-            Hr = None   
+    #     #  We only return Hr so that it may be passed to the halt_log_fn,
+    #     #  since (advanced) users may wish to look at it.  However, if
+    #     #  regularization was actually not applied, i.e. H = Hr, then we can
+    #     #  set Hr = [].  Users can already get H since @sr1_obj.getState
+    #     #  is passed into halt_log_fn and the [] value will indicate to the 
+    #     #  user that regularization was not applied (which can be checked
+    #     #  more efficiently and quickly than comparing two matrices).   
+    #     if code == 1:
+    #         Hr = None   
         
-        return [applyHr, Hr]
+    #     return [applyHr, Hr]
 
 
 def getNearbyGradients(penaltyfn_obj,grad_nbd_fn):

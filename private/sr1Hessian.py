@@ -1,13 +1,9 @@
-# import numpy as np
-# from numpy.core.numeric import Inf
 from pygransoStruct import general_struct
-# from numpy import conjugate as conj
-# from dbg_print import dbg_print_1
 import torch
 
-class H_obj_struct:
+class B_obj_struct:
     
-    def __init__(self,H,scaleH0):
+    def __init__(self,B,scaleH0):
         self.requests        = 0
         self.updates         = 0
         self.damped_requests = 0
@@ -15,40 +11,40 @@ class H_obj_struct:
         self.scale_fails     = 0
         self.sty_fails       = 0
         self.infnan_fails    = 0
-        self.H = H
-        self.scaleH0 = scaleH0
+        self.B = B
+        # self.scaleH0 = scaleH0
 
     # @profile
     def update(self,s,y):
         self.requests += 1
         skipped  = 0
         
-        Hy = self.H @ y
+        Bs = self.B@s
 
         # Reference: Nocedal, Jorge, and Stephen Wright. Numerical optimization. Springer Science & Business Media, 2006. 
         #             P145 SR1 method
 
         # there is no symmetric rank-one updating formula satisfying the secant equation
-        if torch.all(s != Hy) and (s-Hy).t()@y == 0:
+        if torch.all(y != Bs) and (y-Bs).t()@s == 0:
             skipped = 2
             self.sty_fails += 1
             print("change name for sty_fails")
             return skipped
         
         # simple update: unchanged H
-        elif torch.all(s == Hy):
+        elif torch.all(y == Bs):
             return skipped
 
         # else:
-        s_Hy = s - self.H@y 
-        H_new = self.H + s_Hy @ s_Hy.t()/( s_Hy.t()@y )
+        y_Bs = y - self.B@s
+        B_new = self.B + y_Bs@y_Bs.t()/(y_Bs.t()@s)
 
         #  only update H if H_new doesn't contain any infs or nans
-        H_vec = torch.reshape(H_new, (torch.numel(H_new),1))
-        notInf_flag = torch.all(torch.isinf(H_vec) == False)
-        notNan_flag = torch.all(torch.isnan(H_vec) == False)
+        B_vec = torch.reshape(B_new, (torch.numel(B_new),1))
+        notInf_flag = torch.all(torch.isinf(B_vec) == False)
+        notNan_flag = torch.all(torch.isnan(B_vec) == False)
         if notInf_flag and notNan_flag:
-            self.H = H_new
+            self.B = B_new
             self.updates += 1
         else:
             skipped = 3
@@ -56,13 +52,10 @@ class H_obj_struct:
         
         return skipped
 
-    def applyH(self,q):
-        r = self.H @q 
-        return r
 
     def getState(self):
-        H_out = self.H
-        return H_out
+        B_out = self.B
+        return B_out
 
     def getCounts(self):
         counts = general_struct()
@@ -76,11 +69,11 @@ class H_obj_struct:
         return counts
 
 
-def sr1HessianInverse(H,scaleH0):
-#    sr1HessianInverse:
+def sr1Hessian(B,scaleH0):
+#    sr1Hessian:
 #        An object that maintains and updates a sr1 approximation to the 
-#        inverse Hessian.
+#        Hessian.
 
-    H_obj = H_obj_struct(H,scaleH0)
+    B_obj = B_obj_struct(B,scaleH0)
 
-    return H_obj
+    return B_obj

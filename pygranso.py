@@ -1,6 +1,6 @@
 import torch
 from private.makePenaltyFunction import PanaltyFuctions
-from private import bfgsHessianInverse as bfgsHI, printMessageBox as pMB, sr1HessianInverse as sr1HI
+from private import bfgsHessianInverse as bfgsHI, printMessageBox as pMB, sr1Hessian as sr1H
 from private.bfgssqp import AlgBFGSSQP
 from private.sr1sqp import AlgSR1SQP
 from private.pygransoPrinter import pgP
@@ -365,7 +365,7 @@ def pygranso(var_dim_map=None,nn_model=None, torch_device = torch.device('cpu'),
 
         sr1_flag = True
         if sr1_flag:
-            [sr1_hess_inv_obj,opts] = getSr1Manager(opts)
+            [sr1_hess_obj,opts] = getSr1Manager(opts)
         else:
             [bfgs_hess_inv_obj,opts] = getBfgsManager(opts)
 
@@ -405,7 +405,7 @@ def pygranso(var_dim_map=None,nn_model=None, torch_device = torch.device('cpu'),
         sr1_flag = True
         if sr1_flag:
             sr1sqp_obj = AlgSR1SQP()
-            info = sr1sqp_obj.sr1sqp(f_eval_fn, penaltyfn_obj,sr1_hess_inv_obj,opts,printer, torch_device)
+            info = sr1sqp_obj.sr1sqp(f_eval_fn, penaltyfn_obj,sr1_hess_obj,opts,printer, torch_device)
         else:
             bfgssqp_obj = AlgBFGSSQP()
             info = bfgssqp_obj.bfgssqp(f_eval_fn, penaltyfn_obj,bfgs_hess_inv_obj,opts,printer, torch_device)
@@ -420,9 +420,9 @@ def pygranso(var_dim_map=None,nn_model=None, torch_device = torch.device('cpu'),
     if sr1_flag:
         # package up solution in output argument
         [ soln, stat_value ]        = penaltyfn_obj.getBestSolutions()
-        soln.H_final                = sr1_hess_inv_obj.getState()
+        soln.H_final                = sr1_hess_obj.getState()
         soln.stat_value             = stat_value
-        sr1_counts                 = sr1_hess_inv_obj.getCounts()
+        sr1_counts                 = sr1_hess_obj.getCounts()
         soln.iters                  = sr1_counts.requests
         soln.SR1_updates           = sr1_counts
         soln.fn_evals               = penaltyfn_obj.getNumberOfEvaluations()
@@ -523,7 +523,7 @@ def getBfgsManager(opts):
 
 def getSr1Manager(opts):
     if opts.limited_mem_size == 0:
-        get_sr1_fn = lambda H,scaleH0, *_ : sr1HI.sr1HessianInverse(H,scaleH0)
+        get_sr1_fn = lambda H,scaleH0, *_ : sr1H.sr1Hessian(H,scaleH0)
         lsr1_args  = None
         dbg_print("CAll BFGS: Skip L-SR1 for now")
     else:
