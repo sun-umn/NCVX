@@ -73,14 +73,15 @@ def mainFun():
         opts.print_frequency = 1
         # opts.print_ascii = True
 
+        opts.max_fallback_level = 2
+        opts.min_fallback_level = 2
+
         sr1_flag = True
 
         if sr1_flag == False:
                 # opts.wolfe1 = 0.1
                 # opts.wolfe2 = 1e-4
                 opts.halt_on_linesearch_bracket = False
-                opts.max_fallback_level = 3
-                opts.min_fallback_level = 2
                 opts.init_step_size = 1e-2
                 opts.linesearch_maxit = 25
                 opts.is_backtrack_linesearch = True
