@@ -10,6 +10,7 @@ from numpy.random import default_rng
 import torch
 import math
 from scipy import optimize
+from private.solveQP import solveQP
 
 
 class AlgSR1SQP():
@@ -236,13 +237,8 @@ class AlgSR1SQP():
             self.g_prev = g      # necessary for sr1 update
 
             B = self.sr1_obj.getState()
-            #Decompose B into lambdas vs and r
-            vals,vecs=torch.symeig(B,eigenvectors=True)
-            #identify non-zero eigen values
-            ind=vals>1e-6
-            lambdas=vals[ind]
-            vs=vecs[:,ind]
-            s = trust_region_subproblem(f,g,delta,lambdas,vs,1)
+
+            s = self.trust_region_subproblem(g,B,delta)
 
             [f,g,is_feasible] = self.penaltyfn_obj.evaluatePenaltyFunction(x+s)
             y = g - self.g_prev
@@ -394,7 +390,7 @@ class AlgSR1SQP():
         tf = True
         #  only converged if point is feasible to tolerance
         if self.penaltyfn_at_x.feasible_to_tol:
-            if torch.norm(self.g) > self.opt_tol:
+            if torch.norm(self.g) <= self.opt_tol:
                 self.prepareTermination(0)
                 return tf
             elif self.rel_diff <= self.rel_tol:
@@ -421,6 +417,13 @@ class AlgSR1SQP():
         if update_code > 0 and self.print_level > 1:
             print("Please check self.printer.bfgsInfo(self.iter,update_code) in sr1 sqp")
             self.printer.bfgsInfo(self.iter,update_code)
+
+    def trust_region_subproblem(self,g,B,delta):
+        nvar = len(g)
+        LB = -delta*torch.ones((nvar,1))
+        UB = delta*torch.ones((nvar,1))
+        s = solveQP(B,g,None,None,LB,UB,self.QPsolver,self.torch_device)
+        return s
         
 
     # def getApplyH(self):
@@ -461,153 +464,3 @@ def getNearbyGradients(penaltyfn_obj,grad_nbd_fn):
     return [grads_ret,dist_evals]
 
 
-#Trust region subproblem solving function(Algo 3)
-
-#Blackboxes: 
-#isinrange(g is in range of B)
-#findrootin(newton's method to find roots of phi(sigma)=0)
-#calc_lim(calculate lim phi(sigma))
-#find_p_given_sigma(find p^* given sigma^*)
-
-def trust_region_subproblem(f,g,d,lambdas,vs,r):
-
-
-    #Calculate p_u
-    pu=-torch.sum((vs*(vs.t()@g))/lambdas,dim=1)
-    if lambdas[0]>1e-5 and isinrange(g,vs) and torch.norm(pu)<=d:
-        return pu
-    if r==1:
-        Q=vs
-    else:
-        t=2
-        while lambdas[t-1]-lambdas[0]<1e-3:
-            t=t+1
-            if t>r:
-                break
-        #need to go back 1 step to find largest t that satisfies the condition
-        t=t-1
-        Q=vs[:,0:t]
-    if(torch.sum(torch.abs(Q.t()@g)>1e-5)>0):
-        sigma=findrootin(max(-lambdas[0],0),g,lambdas,vs,d,r)
-        p=find_p_given_sigma(sigma,g,lambdas,vs)
-        return p
-    else:
-        if lambdas[0]>1e-5:
-            sigma=findrootin(0,g,lambdas,vs,d,r)
-            p=find_p_given_sigma(sigma,g,lambdas,vs)
-            return p
-        else:
-            lim_phi=calc_lim(-lambdas[0],g,lambdas,vs,r,d)
-            print("Lim(phi)=",lim_phi)
-            if lim_phi>1e-5:
-                #calcluate second and third term in the formula of tau(13)
-                #get lambdas and vs from t+1 to r
-                lambdas_tp1_to_r=lambdas[t:r]
-                vs_tp1_to_r=vs[:,t:r]
-                second_term_13=torch.sum(((vs_tp1_to_r.t()@g)*(1/(lambdas_tp1_to_r-lambdas[0])))**2)
-                third_term_13=((1/lambdas[0])**2)*(torch.norm(g)**2-torch.sum((vs.t()@g)**2))
-                tau=torch.sqrt(d**2-second_term_13+third_term_13)
-                #To deal with the plus/minus issue, need to compare the two values of tau
-                #calculate first and second term in the formula of p_h(12)
-                first_term_12=torch.sum((vs_tp1_to_r*(vs_tp1_to_r.t()@g))*(1/(lambdas_tp1_to_r-lambdas[0])),dim=1)
-                second_term_12=(1/lambdas[0])*(g-torch.sum(vs*(vs.t()@g),dim=1))
-                #p_h value for plus tau and minus tau
-                ph_plus=-first_term_12+second_term_12+tau*vs[:,0]
-                ph_minus=-first_term_12+second_term_12-tau*vs[:,0]
-                #Calculate objective value for two values of p_h
-                obj_plus=0.5*torch.sum(((vs.t()@ph_plus)**2)*lambdas) + torch.sum(ph_plus*g)
-                obj_minus=0.5*torch.sum(((vs.t()@ph_minus)**2)*lambdas) + torch.sum(ph_minus*g)
-                if obj_plus<obj_minus:
-                    return ph_plus
-                else:
-                    return ph_minus
-            elif lim_phi<-1e-5:
-                sigma=findrootin(-lambdas[0],g,lambdas,vs,d,r)
-                p=find_p_given_sigma(sigma,g,lambdas,vs)
-                return p
-            else:
-                #get lambdas and vs from t+1 to r
-                lambdas_tp1_to_r=lambdas[t:r]
-                vs_tp1_to_r=vs[:,t:r]
-                #calculate first and second term in the formula of p_h(12)
-                first_term_12=torch.sum((vs_tp1_to_r*(vs_tp1_to_r.t()@g))*(1/(lambdas_tp1_to_r-lambdas[0])),dim=1)
-                second_term_12=(1/lambdas[0])*(g-torch.sum(vs*(vs.t()@g),dim=1))
-                ph=-first_term_12+second_term_12
-                return ph
-
-#isinrange(g is in range of V)
-def isinrange(g,vs):
-    if(torch.norm(g-vs@(vs.t()@g))<1e-3):
-        return True
-    else:
-        return False
-
-def findrootin(a,g,lambdas,vs,d,r):
-    #define newton objective as one argument function
-    def newton_obj_single(sigma):
-        return newton_obj(sigma,g,lambdas,vs,r,d)
-    #brentq method requires b_large s.t. f(b_large)>0
-    #Closed form for large b
-    b_large_1=(math.sqrt(r+1)/d)*(torch.norm(g)**2-torch.norm(vs.t()@g)**2)
-    b_large=b_large_1
-    for i in range(r):
-       b_large_2=(math.sqrt(r+1)/d)*torch.abs(vs[:,i].t()@g)-lambdas[i]
-       if b_large<b_large_2:
-           b_large=b_large_2
-    b_large=b_large+1
-    x0,r=optimize.brentq(newton_obj_single,a,b_large,maxiter=10000,full_output=True,disp=False)
-    return x0
-
-#find_p_given_sigma(using pseudo inverse method)
-def find_p_given_sigma(sigma,g,lambdas,vs):
-    lambda_new=lambdas+sigma
-    lambda_new_inv=lambda_new
-    lambda_active=torch.abs(lambda_new)>1e-5
-    lambda_new_inv[lambda_active]=1/lambda_new_inv[lambda_active]
-    lambda_new_inv[torch.logical_not(lambda_active)]=0
-    p=-torch.sum((vs*(vs.t()@g))*lambda_new_inv,dim=1)
-    if abs(sigma)>1e-5:
-        p=p-(g-vs@(vs.t()@g))/sigma
-    return p
-
-#calc_lim(calculate lim_{lambda^+} phi(sigma))
-def calc_lim(sigma,g,lambdas,vs,r,d):
-    #need to calculate limit at sigma->lambda^+
-    sigma=sigma+1e-5
-    #first calculate two terms in ||P(sigma)||^2 (11)
-    first_term_11=torch.sum(((vs.t()@g)/(lambdas+sigma))**2)
-    #Avoid numerical error for the first rank
-    if r==1:
-        second_term_11=0
-    else:
-        second_term_11=(1/sigma**2)*(torch.norm(g)**2-torch.norm(vs.t()@g)**2)
-    #calculate ||P(sigma)||^2
-    P_sigma_2=first_term_11+second_term_11
-    #calculate the limit
-    return 1/torch.sqrt(P_sigma_2) - 1/d
-
-#findrootin(newton's method to find roots of phi(sigma)=0) using scipy
-#First define a function to get objective value phi(sigma)
-def newton_obj(sigma,g,lambdas,vs,r,d):
-    #if sigma very close to 0, objective value is -1/d
-    if abs(sigma)<1e-5:
-        return -1/d
-    #if sigma is inf, objective value is also inf
-    if math.isinf(sigma):
-        return math.inf
-    #if sigma is close to -lambda1, return -1/d
-    if abs(sigma-(-lambdas[0]))<1e-5:
-        return -1/d
-    
-    #first calculate two terms in ||P(sigma)||^2 (20)
-    first_term_11=torch.sum(((vs.t()@g)/(lambdas+sigma))**2)
-    #Avoid numerical error for the first rank
-    if r==1:
-        second_term_11=0
-    else:
-        second_term_11=(1/sigma**2)*(torch.norm(g)**2-torch.norm(vs.t()@g)**2)
-    #calculate ||P(sigma)||^2
-    P_sigma_2=first_term_11+second_term_11
-    #calculate phi(sigma)
-    phi_sigma=1/torch.sqrt(P_sigma_2) - 1/d
-    return phi_sigma

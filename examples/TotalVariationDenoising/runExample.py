@@ -36,7 +36,7 @@ opts.QPsolver = 'osqp'
 opts.maxit = 1000
 opts.x0 = torch.ones((n,1)).to(device=device, dtype=torch.double)
 opts.print_level = 1
-opts.print_frequency = 10
+opts.print_frequency = 1
 
 #  main algorithm  
 start = time.time()

@@ -68,6 +68,13 @@ class B_obj_struct:
         setattr(counts,"infnan_fails",self.infnan_fails)
         return counts
 
+    def sr1SetHessian(self,B):
+        #    sr1Hessian:
+        #        An object that maintains and updates a sr1 approximation to the 
+        #        Hessian.
+        self.B = B
+        return 
+
 
 def sr1Hessian(B,scaleH0):
 #    sr1Hessian:
@@ -77,3 +84,4 @@ def sr1Hessian(B,scaleH0):
     B_obj = B_obj_struct(B,scaleH0)
 
     return B_obj
+
