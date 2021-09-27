@@ -32,7 +32,8 @@ data_in.eta = np.double(eta) # double precision requireed in torch operations
 
 # user defined options
 opts = Options()
-opts.QPsolver = 'osqp' 
+# opts.QPsolver = 'osqp' 
+opts.QPsolver = 'gurobi' 
 opts.maxit = 1000
 opts.x0 = torch.ones((n,1)).to(device=device, dtype=torch.double)
 opts.print_level = 1
