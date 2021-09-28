@@ -239,6 +239,7 @@ class AlgSR1SQP():
             B = self.sr1_obj.getState()
 
             s = self.trust_region_subproblem(g,B,delta)
+            print("s_norm = %f"%torch.norm(s, float('inf')))
 
             [f,g,is_feasible] = self.penaltyfn_obj.evaluatePenaltyFunction(x+s)
             y = g - self.g_prev
@@ -248,13 +249,15 @@ class AlgSR1SQP():
             pred = - (self.g_prev.t()@s + .5*s.t()@B@s)
             ap_ratio = ared/pred
 
+            print("ap_ratio = %f"%ap_ratio.item())
             # update x to accepted iterate from trust region
             if ap_ratio > eta:
                 x = x + s
+                print("make a movement")
             # otherwise no movement
 
             if ap_ratio > 0.75:
-                if torch.norm(s) <= 0.8*delta:
+                if torch.norm(s, float('inf')) <= 0.8*delta:
                     pass
                     # unchanged delta
                 else:
@@ -271,6 +274,7 @@ class AlgSR1SQP():
                 # This computation is done before checking the termination
                 # conditions because we wish to provide the most recent (L)SR1
                 # data to users in case they desire to restart.   
+                print("6.26 holds")
                 self.applySr1Update(s,g,self.g_prev)
             # else no update
             self.g = g

@@ -128,7 +128,7 @@ def solveQP(H,f,A,b,LB,UB,QPsolver,torch_device):
 
             #  suppress output
             # m.Params.LogToConsole = 0
-            m.Params.outputflag = 0
+            m.Params.outputflag = 1
             m.params.NonConvex = 2
 
             m.optimize()
