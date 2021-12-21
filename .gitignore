@@ -72,3 +72,5 @@ test/
 .vscode
 examples/cifar-10-batches-py/data_batch_*
 examples/cifar-10-batches-py/*
+*.pyc
+private/__pycache__/
