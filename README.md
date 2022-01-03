@@ -14,6 +14,15 @@ NCVX is AGPL v3.0 licensed but also contains some code under other compatible li
 
 ## Installation
 
+1. Clone the NCVX git repository and submodules
+```
+    git clone https://github.com/sun-umn/NCVX
+    git submodule update --init --recursive
+```
+2. Follow the install instructions in the README.md of each submodule you wish to use (currently, only PyGRANSO)
+
+***Note: Downloading a zip file of the NCVX repo directly from GitHub will NOT contain submodules files.***
+
 ## Citation
 
 If you publish work that uses or refers to NCVX, please cite the following two papers:
