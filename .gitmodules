@@ -1,0 +1,3 @@
+[submodule "PyGRANSO"]
+	path = PyGRANSO
+	url = https://github.com/sun-umn/PyGRANSO.git
