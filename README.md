@@ -10,7 +10,7 @@ NCVX is AGPL v3.0 licensed but also contains some code under other compatible li
 
 ## Solver/Module
 
-**PyGRANSO**: A PyTorch-enabled port of GRANSO with auto-differentiation [Documentation](https://ncvx.org/PyGRANSO) | [Repository](https://github.com/sun-umn/PyGRANSO)
+**PyGRANSO**: A PyTorch-enabled port of GRANSO with auto-differentiation [Documentation](https://ncvx.org) | [Repository](https://github.com/sun-umn/PyGRANSO)
 
 ## Installation
 
